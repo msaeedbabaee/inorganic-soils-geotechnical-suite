@@ -16,10 +16,8 @@ st.set_page_config(
 
 
 class GrainSizeAnalyzer:
-    """Engine for grain size distribution curve analysis (ASTM D6913 & D7928)."""
 
     def __init__(self, df_sieve: pd.DataFrame):
-        # df_sieve must have columns: ['grain_size_mm', 'percent_passing']
         self.df = df_sieve.sort_values(by="grain_size_mm", ascending=False).reset_index(
             drop=True
         )
@@ -27,40 +25,26 @@ class GrainSizeAnalyzer:
     def calculate_coefficients(self):
         sizes = self.df["grain_size_mm"].values
         passing = self.df["percent_passing"].values
-
-        # Filter out zero or negative passing for log interpolation
         valid = (sizes > 0) & (passing > 0) & (passing < 100)
         if sum(valid) < 2:
-            return None, None, None, 0.0, 0.0, "Insufficient data points for curve fit."
-
-        log_sizes = np.log10(sizes[valid])
-        pass_vals = passing[valid]
-
+            return None, None, None, 0.0, 0.0, "Insufficient data points."
         try:
-            # Interpolation function for log(size) vs percent passing
+            log_sizes = np.log10(sizes[valid])
+            pass_vals = passing[valid]
             f_interp = interp1d(
                 pass_vals, log_sizes, kind="linear", fill_value="extrapolate"
             )
-
-            # Find D10, D30, D60
             d10 = 10 ** float(f_interp(10.0))
             d30 = 10 ** float(f_interp(30.0))
             d60 = 10 ** float(f_interp(60.0))
-
             cu = d60 / d10 if d10 > 0 else 0.0
             cc = (d30**2) / (d10 * d60) if (d10 * d60) > 0 else 0.0
-
-            # Grading evaluation (Unified Soil Classification System criteria)
-            # Assuming coarse-grained boundary checks typically handled externally, but general definition:
-            grading = "Borderline / Unclassified"
-            # Basic check for gravel/sand general well-graded criteria
             return d10, d30, d60, cu, cc, "Success"
         except Exception as e:
             return None, None, None, 0.0, 0.0, str(e)
 
 
 class VisualSoilDescriptionEngine:
-    """Engine for visual-manual soil identification and description (ASTM D2488)."""
 
     def __init__(
         self,
@@ -93,24 +77,22 @@ class VisualSoilDescriptionEngine:
             desc += f"Dilatancy: {self.dilatancy}, Toughness: {self.toughness}."
         else:
             desc += f"Particle Angularity: {self.angularity}, Shape: {self.particle_shape}."
-
         if self.hcl_reaction != "None":
             desc += f" Reaction with HCl: {self.hcl_reaction}."
         return desc
 
 
 class RelativeDensityCalculator:
-    """Engine for relative density (Dr) and compactness calculations."""
 
     def __init__(
         self,
         method="Void Ratio",
-        e=None,
-        e_min=None,
-        e_max=None,
-        gamma_d=None,
-        gamma_d_min=None,
-        gamma_d_max=None,
+        e=0.65,
+        e_min=0.45,
+        e_max=0.85,
+        gamma_d=16.5,
+        gamma_d_min=14.0,
+        gamma_d_max=18.5,
     ):
         self.method = method
         self.e = e
@@ -121,24 +103,14 @@ class RelativeDensityCalculator:
         self.gamma_d_max = gamma_d_max
 
     def compute(self):
-        if self.method == "Void Ratio":
-            if (
-                self.e_max is None
-                or self.e_min is None
-                or self.e is None
-                or self.e_max == self.e_min
-            ):
+        if self.method.startswith("Void"):
+            if self.e_max == self.e_min:
                 return 0.0, "Invalid Input"
             dr = (
                 (self.e_max - self.e) / (self.e_max - self.e_min)
             ) * 100.0
         else:
-            if (
-                self.gamma_d_min is None
-                or self.gamma_d_max is None
-                or self.gamma_d is None
-                or self.gamma_d_max == self.gamma_d_min
-            ):
+            if self.gamma_d_max == self.gamma_d_min:
                 return 0.0, "Invalid Input"
             dr = (
                 (self.gamma_d_max * (self.gamma_d - self.gamma_d_min))
@@ -146,8 +118,6 @@ class RelativeDensityCalculator:
             ) * 100.0
 
         dr = float(np.clip(dr, 0.0, 100.0))
-
-        # Compactness classification (CFEM Table 4.3 equivalent)
         if dr < 15:
             compactness = "Very Loose"
         elif dr < 35:
@@ -158,7 +128,6 @@ class RelativeDensityCalculator:
             compactness = "Dense"
         else:
             compactness = "Very Dense"
-
         return dr, compactness
 
 
@@ -180,12 +149,7 @@ tab1, tab2, tab3 = st.tabs(
 # --- TAB 1: GRAIN SIZE ANALYSIS ---
 with tab1:
     st.header("Grain Size Distribution & Gradation Curve Analyzer")
-    st.write(
-        "Analyze sieve and hydrometer test data to extract \(D_{10}, D_{30}, D_{60}\) and grading coefficients."
-    )
-
     col1, col2 = st.columns([1, 2])
-
     with col1:
         st.subheader("Input Sieve Data")
         default_data = pd.DataFrame(
@@ -214,17 +178,14 @@ with tab1:
                 ],
             }
         )
-
         edited_sieve_df = st.data_editor(
             default_data, num_rows="dynamic", use_container_width=True
         )
-
     with col2:
         st.subheader("Gradation Curve & Results")
         if not edited_sieve_df.empty:
             analyzer = GrainSizeAnalyzer(edited_sieve_df)
             d10, d30, d60, cu, cc, status = analyzer.calculate_coefficients()
-
             if status == "Success":
                 m1, m2, m3, m4, m5 = st.columns(5)
                 m1.metric("D10 (mm)", f"{d10:.3f}")
@@ -233,7 +194,6 @@ with tab1:
                 m4.metric("Cu", f"{cu:.2f}")
                 m5.metric("Cc", f"{cc:.2f}")
 
-                # Plotly Interactive Chart
                 fig = go.Figure()
                 fig.add_trace(
                     go.Scatter(
@@ -258,18 +218,10 @@ with tab1:
                     height=350,
                 )
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning(
-                    "Please provide valid, strictly descending sieve sizes with passing percentages between 0 and 100."
-                )
 
 # --- TAB 2: VISUAL-MANUAL DESCRIPTION ---
 with tab2:
     st.header("Visual-Manual Soil Description Generator (ASTM D2488)")
-    st.write(
-        "Generate professional field identification descriptions based on qualitative index properties."
-    )
-
     c1, c2, c3 = st.columns(3)
     with c1:
         soil_name = st.selectbox(
@@ -284,39 +236,22 @@ with tab2:
                 "Sandy Lean Clay",
             ],
         )
-        color = st.selectbox(
-            "Color",
-            [
-                "Brown",
-                "Dark Brown",
-                "Gray",
-                "Dark Gray",
-                "Reddish Brown",
-                "Yellowish Brown",
-            ],
-        )
+        color = st.selectbox("Color", ["Brown", "Dark Brown", "Gray", "Dark Gray"])
         moisture = st.selectbox("Moisture Condition", ["Dry", "Moist", "Wet"])
     with c2:
         plasticity = st.selectbox(
-            "Plasticity (Fine Soils)", ["Non-plastic", "Low", "Medium", "High"]
+            "Plasticity", ["Non-plastic", "Low", "Medium", "High"]
         )
         dry_strength = st.selectbox(
-            "Dry Strength", ["None", "Low", "Medium", "High", "Very High"]
+            "Dry Strength", ["None", "Low", "Medium", "High"]
         )
-        dilatancy = st.selectbox(
-            "Dilatancy (Reaction to Shaking)", ["None", "Slow", "Rapid"]
-        )
+        dilatancy = st.selectbox("Dilatancy", ["None", "Slow", "Rapid"])
     with c3:
-        toughness = st.selectbox(
-            "Toughness (Consistency near PL)", ["Low", "Medium", "High"]
-        )
+        toughness = st.selectbox("Toughness", ["Low", "Medium", "High"])
         angularity = st.selectbox(
-            "Angularity (Coarse Soils)",
-            ["Angular", "Sub-angular", "Sub-rounded", "Rounded"],
+            "Angularity", ["Angular", "Sub-angular", "Sub-rounded", "Rounded"]
         )
-        particle_shape = st.selectbox(
-            "Particle Shape", ["Flat", "Elongated", "Flat and Elongated", "None"]
-        )
+        particle_shape = st.selectbox("Particle Shape", ["Flat", "None"])
         hcl_reaction = st.selectbox("Reaction with HCl", ["None", "Weak", "Strong"])
 
     desc_engine = VisualSoilDescriptionEngine(
@@ -332,32 +267,27 @@ with tab2:
         hcl_reaction,
     )
     final_desc = desc_engine.generate_description_string()
-
     st.success(f"**Standard Descriptive Name:** \n\n `{final_desc}`")
 
 # --- TAB 3: RELATIVE DENSITY ---
 with tab3:
     st.header("Relative Density & Compactness Calculator")
-    st.write(
-        "Compute relative density (\(D_d\)) for coarse-grained soils according to CFEM equations."
+    method = st.radio(
+        "Calculation Method:",
+        ("Void Ratio (\(e, e_{max}, e_{min}\))", "Dry Unit Weight"),
     )
 
-    method = st.radio(
-        "Calculation Method:", ("Void Ratio (\(e, e_{max}, e_{min}\))", "Dry Unit Weight (\(\gamma_d, \gamma_{min}, \gamma_{max}\))")
-    )
+    # Initialize default calculation results to prevent scope errors
+    dr_val, compactness = 65.0, "Medium Dense"
 
     if method.startswith("Void"):
         col_a, col_b, col_c = st.columns(3)
         with col_a:
-            e = st.number_input("In-situ Void Ratio (\(e\))", value=0.65, step=0.01)
+            e = st.number_input("In-situ Void Ratio (\(e\))", value=0.65)
         with col_b:
-            e_min = st.number_input(
-                "Minimum Void Ratio (\(e_{min}\))", value=0.45, step=0.01
-            )
+            e_min = st.number_input("Min Void Ratio (\(e_{min}\))", value=0.45)
         with col_c:
-            e_max = st.number_input(
-                "Maximum Void Ratio (\(e_{max}\))", value=0.85, step=0.01
-            )
+            e_max = st.number_input("Max Void Ratio (\(e_{max}\))", value=0.85)
         rd_calc = RelativeDensityCalculator(
             method="Void Ratio", e=e, e_min=e_min, e_max=e_max
         )
@@ -365,20 +295,12 @@ with tab3:
         col_a, col_b, col_c = st.columns(3)
         with col_a:
             gamma_d = st.number_input(
-                "Dry Unit Weight \(\\gamma_d\) (\(kN/m^3\))", value=16.5, step=0.1
+                "Dry Unit Weight \(\\gamma_d\) (\(kN/m^3\))", value=16.5
             )
         with col_b:
-            gamma_d_min = st.number_input(
-                "Min Dry Unit Weight \(\\gamma_{min}\) (\(kN/m^3\))",
-                value=14.0,
-                step=0.1,
-            )
+            gamma_d_min = st.number_input("Min \(\\gamma_d\) (\(kN/m^3\))", value=14.0)
         with col_c:
-            gamma_d_max = st.number_input(
-                "Max Dry Unit Weight \(\\gamma_{max}\) (\(kN/m^3\))",
-                value=18.5,
-                step=0.1,
-            )
+            gamma_d_max = st.number_input("Max \(\\gamma_d\) (\(kN/m^3\))", value=18.5)
         rd_calc = RelativeDensityCalculator(
             method="Unit Weight",
             gamma_d=gamma_d,
@@ -386,10 +308,9 @@ with tab3:
             gamma_d_max=gamma_d_max,
         )
 
-    if st.button("Compute Relative Density", type="primary"):
-        dr_val, compactness = rd_calc.compute()
-        st.metric("Relative Density (\(D_d\))", f"{dr_val:.1f} %")
-        st.info(f"**Compactness State:** `{compactness}`")
+    dr_val, compactness = rd_calc.compute()
+    st.metric("Relative Density (\(D_d\))", f"{dr_val:.1f} %")
+    st.info(f"**Compactness State:** `{compactness}`")
 
 # --- EXPORT REPORT UTILITY ---
 st.markdown("---")
