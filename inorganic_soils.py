@@ -1,5 +1,4 @@
 import io
-import matplotlib.pyplot as plt
 import numpy as np
 import openpyxl
 import pandas as pd
@@ -9,18 +8,17 @@ import streamlit as st
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Inorganic Soils Geotechnical Suite", page_icon="🧪", layout="wide"
+    page_title="Inorganic Soils Suite", page_icon="🧪", layout="wide"
 )
 
+
 # --- OOP COMPUTATIONAL ENGINES ---
-
-
 class GrainSizeAnalyzer:
 
     def __init__(self, df_sieve: pd.DataFrame):
-        self.df = df_sieve.sort_values(by="grain_size_mm", ascending=False).reset_index(
-            drop=True
-        )
+        self.df = df_sieve.sort_values(
+            by="grain_size_mm", ascending=False
+        ).reset_index(drop=True)
 
     def calculate_coefficients(self):
         sizes = self.df["grain_size_mm"].values
@@ -106,9 +104,7 @@ class RelativeDensityCalculator:
         if self.method.startswith("Void"):
             if self.e_max == self.e_min:
                 return 0.0, "Invalid Input"
-            dr = (
-                (self.e_max - self.e) / (self.e_max - self.e_min)
-            ) * 100.0
+            dr = ((self.e_max - self.e) / (self.e_max - self.e_min)) * 100.0
         else:
             if self.gamma_d_max == self.gamma_d_min:
                 return 0.0, "Invalid Input"
@@ -131,12 +127,8 @@ class RelativeDensityCalculator:
         return dr, compactness
 
 
-# --- STREAMLIT USER INTERFACE ---
-
+# --- UI ---
 st.title("🧪 Inorganic Soils Geotechnical Suite (CFEM Chapter 4)")
-st.markdown(
-    "Production-grade analysis platform covering **Grain Size Curves**, **Visual-Manual Classification (ASTM D2488)**, and **Relative Density Computations**."
-)
 
 tab1, tab2, tab3 = st.tabs(
     [
@@ -146,12 +138,10 @@ tab1, tab2, tab3 = st.tabs(
     ]
 )
 
-# --- TAB 1: GRAIN SIZE ANALYSIS ---
 with tab1:
     st.header("Grain Size Distribution & Gradation Curve Analyzer")
     col1, col2 = st.columns([1, 2])
     with col1:
-        st.subheader("Input Sieve Data")
         default_data = pd.DataFrame(
             {
                 "grain_size_mm": [
@@ -182,7 +172,6 @@ with tab1:
             default_data, num_rows="dynamic", use_container_width=True
         )
     with col2:
-        st.subheader("Gradation Curve & Results")
         if not edited_sieve_df.empty:
             analyzer = GrainSizeAnalyzer(edited_sieve_df)
             d10, d30, d60, cu, cc, status = analyzer.calculate_coefficients()
@@ -201,7 +190,6 @@ with tab1:
                         y=edited_sieve_df["percent_passing"],
                         mode="lines+markers",
                         name="Gradation Curve",
-                        line=dict(color="blue", width=2),
                     )
                 )
                 fig.update_xaxes(
@@ -209,17 +197,12 @@ with tab1:
                     autorange="reversed",
                     title="Grain Size (mm) [Log Scale]",
                 )
-                fig.update_yaxes(
-                    title="Percent Passing (%)", range=[0, 100]
-                )
+                fig.update_yaxes(title="Percent Passing (%)", range=[0, 100])
                 fig.update_layout(
-                    title="Particle Size Distribution Curve",
-                    margin=dict(l=20, r=20, t=40, b=20),
-                    height=350,
+                    title="Particle Size Distribution Curve", height=350
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
-# --- TAB 2: VISUAL-MANUAL DESCRIPTION ---
 with tab2:
     st.header("Visual-Manual Soil Description Generator (ASTM D2488)")
     c1, c2, c3 = st.columns(3)
@@ -236,7 +219,9 @@ with tab2:
                 "Sandy Lean Clay",
             ],
         )
-        color = st.selectbox("Color", ["Brown", "Dark Brown", "Gray", "Dark Gray"])
+        color = st.selectbox(
+            "Color", ["Brown", "Dark Brown", "Gray", "Dark Gray"]
+        )
         moisture = st.selectbox("Moisture Condition", ["Dry", "Moist", "Wet"])
     with c2:
         plasticity = st.selectbox(
@@ -252,7 +237,9 @@ with tab2:
             "Angularity", ["Angular", "Sub-angular", "Sub-rounded", "Rounded"]
         )
         particle_shape = st.selectbox("Particle Shape", ["Flat", "None"])
-        hcl_reaction = st.selectbox("Reaction with HCl", ["None", "Weak", "Strong"])
+        hcl_reaction = st.selectbox(
+            "Reaction with HCl", ["None", "Weak", "Strong"]
+        )
 
     desc_engine = VisualSoilDescriptionEngine(
         soil_name,
@@ -269,16 +256,12 @@ with tab2:
     final_desc = desc_engine.generate_description_string()
     st.success(f"**Standard Descriptive Name:** \n\n `{final_desc}`")
 
-# --- TAB 3: RELATIVE DENSITY ---
 with tab3:
     st.header("Relative Density & Compactness Calculator")
     method = st.radio(
         "Calculation Method:",
         ("Void Ratio (\(e, e_{max}, e_{min}\))", "Dry Unit Weight"),
     )
-
-    # Initialize default calculation results to prevent scope errors
-    dr_val, compactness = 65.0, "Medium Dense"
 
     if method.startswith("Void"):
         col_a, col_b, col_c = st.columns(3)
@@ -298,9 +281,13 @@ with tab3:
                 "Dry Unit Weight \(\\gamma_d\) (\(kN/m^3\))", value=16.5
             )
         with col_b:
-            gamma_d_min = st.number_input("Min \(\\gamma_d\) (\(kN/m^3\))", value=14.0)
+            gamma_d_min = st.number_input(
+                "Min \(\\gamma_d\) (\(kN/m^3\))", value=14.0
+            )
         with col_c:
-            gamma_d_max = st.number_input("Max \(\\gamma_d\) (\(kN/m^3\))", value=18.5)
+            gamma_d_max = st.number_input(
+                "Max \(\\gamma_d\) (\(kN/m^3\))", value=18.5
+            )
         rd_calc = RelativeDensityCalculator(
             method="Unit Weight",
             gamma_d=gamma_d,
@@ -312,7 +299,6 @@ with tab3:
     st.metric("Relative Density (\(D_d\))", f"{dr_val:.1f} %")
     st.info(f"**Compactness State:** `{compactness}`")
 
-# --- EXPORT REPORT UTILITY ---
 st.markdown("---")
 if st.button("📥 Export Comprehensive Report (.xlsx)"):
     wb = openpyxl.Workbook()
